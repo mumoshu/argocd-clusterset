@@ -11,6 +11,7 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/client-go/kubernetes"
+	"k8s.io/client-go/rest"
 	"k8s.io/client-go/tools/clientcmd"
 	"k8s.io/client-go/util/homedir"
 	"log"
@@ -44,7 +45,10 @@ func Create(config Config) error {
 	dryRun := config.DryRun
 	labels := config.Labels
 
-	clientset := newClientset()
+	clientset, err := newClientset()
+	if err != nil {
+		return xerrors.Errorf("creating clientset: %w", err)
+	}
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
@@ -74,7 +78,7 @@ func Create(config Config) error {
 	}
 
 	// Manage resource
-	_, err := kubeclient.Create(context.TODO(), object, metav1.CreateOptions{})
+	_, err = kubeclient.Create(context.TODO(), object, metav1.CreateOptions{})
 	if err != nil {
 		return err
 	}
@@ -88,7 +92,10 @@ func CreateMissing(config ClusterSetConfig) error {
 	ns := config.NS
 	dryRun := config.DryRun
 
-	clientset := newClientset()
+	clientset, err := newClientset()
+	if err != nil {
+		return xerrors.Errorf("creating clientset: %w", err)
+	}
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
@@ -101,11 +108,15 @@ func CreateMissing(config ClusterSetConfig) error {
 		// Manage resource
 		if !dryRun {
 			_, err := kubeclient.Create(context.TODO(), object, metav1.CreateOptions{})
-			if err != nil && !errors.IsAlreadyExists(err) {
-				return err
+			if err != nil {
+				if errors.IsAlreadyExists(err) {
+					fmt.Printf("Cluster secert %q has no change\n", object.Name)
+				} else {
+					return err
+				}
+			} else {
+				fmt.Printf("Cluster secert %q created successfully\n", object.Name)
 			}
-
-			fmt.Printf("Cluster secert %q created successfully\n", object.Name)
 		} else {
 			fmt.Printf("Cluster secert %q created successfully (Dry Run)\n", object.Name)
 		}
@@ -119,7 +130,10 @@ func Delete(config Config) error {
 	name := config.Name
 	dryRun := config.DryRun
 
-	clientset := newClientset()
+	clientset, err := newClientset()
+	if err != nil {
+		return xerrors.Errorf("creating clientset: %w", err)
+	}
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
@@ -130,7 +144,7 @@ func Delete(config Config) error {
 	}
 
 	// Manage resource
-	err := kubeclient.Delete(context.TODO(), name, metav1.DeleteOptions{})
+	err = kubeclient.Delete(context.TODO(), name, metav1.DeleteOptions{})
 	if err != nil {
 		return err
 	}
@@ -144,7 +158,10 @@ func DeleteMissing(config ClusterSetConfig) error {
 	ns := config.NS
 	dryRun := config.DryRun
 
-	clientset := newClientset()
+	clientset, err := newClientset()
+	if err != nil {
+		return xerrors.Errorf("creating clientset: %w", err)
+	}
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
@@ -335,21 +352,39 @@ func newClusterSecretFromValues(ns, name string, labels map[string]string, serve
 	return object
 }
 
-func newClientset() *kubernetes.Clientset {
+func newClientset() (*kubernetes.Clientset, error) {
 	var kubeconfig string
 	kubeconfig, ok := os.LookupEnv("KUBECONFIG")
 	if !ok {
 		kubeconfig = filepath.Join(homedir.HomeDir(), ".kube", "config")
 	}
 
-	config, err := clientcmd.BuildConfigFromFlags("", kubeconfig)
-	if err != nil {
-		panic(err)
-	}
-	clientset, err := kubernetes.NewForConfig(config)
-	if err != nil {
-		panic(err)
+	var config *rest.Config
+
+	if info, _ := os.Stat(kubeconfig); info == nil {
+		var err error
+
+		log.Printf("Using in-cluster Kubernetes API client")
+
+		config, err = rest.InClusterConfig()
+		if err != nil {
+			return nil, xerrors.Errorf("GetNodeSClient: %w", err)
+		}
+	} else {
+		var err error
+
+		log.Printf("Using kubeconfig-based Kubernetes API client")
+
+		config, err = clientcmd.BuildConfigFromFlags("", kubeconfig)
+		if err != nil {
+			return nil, xerrors.Errorf("GetNodesClient: %w", err)
+		}
 	}
 
-	return clientset
+	clientset, err := kubernetes.NewForConfig(config)
+	if err != nil {
+		return nil, xerrors.Errorf("new for config: %w", err)
+	}
+
+	return clientset, nil
 }

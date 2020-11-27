@@ -33,8 +33,14 @@ test: generate fmt vet manifests
 	go test ./... -coverprofile cover.out
 	kustomize build config/default | kubectl apply -f - --dry-run
 
-manifests: controller-gen
+manifests: controller-gen chart-crds
 	$(CONTROLLER_GEN) $(CRD_OPTIONS) rbac:roleName=manager-role webhook paths="./..." output:crd:artifacts:config=config/crd/bases
+
+chart-crds:
+	cp config/crd/bases/*.yaml charts/clusterset-controller/crds/
+
+test-chart:
+	 bash -c 'diff --unified <(helm template charts/clusterset-controller --include-crds) <(kustomize build config/default)'
 
 # Run go fmt against code
 fmt:

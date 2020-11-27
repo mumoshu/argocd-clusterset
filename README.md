@@ -19,9 +19,33 @@ $ NAME=$YOUR_DOCKER_USER/argocd-clusterset make docker-buildx
 
 $ (cd config/default; kustomize edit set image controller=$YOUR_DOCKER_USER/argocd-clusterset:latest)
 
-$ kustomize build config/default | kubectl apply -f - --dry-run
+# 
+# With kustomize:
+#
 
+$ kustomize build config/default | kubectl apply -f - --dry-run
 $ kustomize build config/default | kubectl apply -f -
+
+#
+# With helm:
+#
+
+$ helm upgrade --install --name clusterset-controller charts/clusterset-controller
+
+$ cat <<EOF | kubectl apply -f -
+apiVersion: clusterset.mumo.co/v1alpha1
+kind: ClusterSet
+metadata:
+  name: myclusterset1
+spec:
+  selector:
+    eksTags:
+      foo: "bar"
+  template:
+    metadata:
+      labels:
+        env: "prod"
+EOF
 ```
 
 Or to use it as a command-line tool, run:

@@ -22,12 +22,20 @@ import (
 
 // ClusterSetSpec defines the desired state of ClusterSet
 type ClusterSetSpec struct {
-	Selector ClusterSelector `json:"selector,omitempty"`
+	Selector ClusterSelector       `json:"selector,omitempty"`
+	Template ClusterSecretTemplate `json:"template"`
 }
 
 type ClusterSelector struct {
-	// +optional
 	EKSTags map[string]string `json:"eksTags,omitempty"`
+}
+
+type ClusterSecretTemplate struct {
+	Metadata ClusterSecretTemplateMetadata `json:"metadata"`
+}
+
+type ClusterSecretTemplateMetadata struct {
+	Labels map[string]string `json:"labels"`
 }
 
 // ClusterSetStatus defines the observed state of ClusterSet
@@ -48,7 +56,7 @@ type ClusterSetStatusClusters struct {
 // +kubebuilder:subresource:status
 // +kubebuilder:printcolumn:JSONPath=".status.lastSyncTime",name=Last Sync,type=date
 
-// ClusterSet is the Schema for the runners API
+// ClusterSet is the Schema for the ClusterSet API
 type ClusterSet struct {
 	metav1.TypeMeta   `json:",inline"`
 	metav1.ObjectMeta `json:"metadata,omitempty"`

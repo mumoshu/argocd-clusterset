@@ -66,6 +66,7 @@ func (m *Manager) Run() error {
 		Scheme:             scheme,
 		MetricsBindAddress: m.MetricsAddr,
 		LeaderElection:     m.EnableLeaderElection,
+		LeaderElectionID:   "clusterset",
 		Port:               9443,
 		SyncPeriod:         &m.SyncPeriod,
 	})

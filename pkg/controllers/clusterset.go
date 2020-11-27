@@ -102,6 +102,7 @@ func (r *ClusterSetReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 		DryRun:  false,
 		NS:      req.Namespace,
 		EKSTags: clusterSet.Spec.Selector.EKSTags,
+		Labels:  clusterSet.Spec.Template.Metadata.Labels,
 	}
 
 	if err := run.Sync(config); err != nil {
@@ -116,11 +117,11 @@ func (r *ClusterSetReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 }
 
 func (r *ClusterSetReconciler) SetupWithManager(mgr ctrl.Manager) error {
-	r.Recorder = mgr.GetEventRecorderFor("runner-controller")
+	r.Recorder = mgr.GetEventRecorderFor("clusterset-controller")
 
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&v1alpha1.ClusterSet{}).
-		Owns(&corev1.Pod{}).
+		Owns(&corev1.Secret{}).
 		Complete(r)
 }
 

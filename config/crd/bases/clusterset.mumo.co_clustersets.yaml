@@ -23,7 +23,7 @@ spec:
     status: {}
   validation:
     openAPIV3Schema:
-      description: ClusterSet is the Schema for the runners API
+      description: ClusterSet is the Schema for the ClusterSet API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -47,6 +47,22 @@ spec:
                     type: string
                   type: object
               type: object
+            template:
+              properties:
+                metadata:
+                  properties:
+                    labels:
+                      additionalProperties:
+                        type: string
+                      type: object
+                  required:
+                  - labels
+                  type: object
+              required:
+              - metadata
+              type: object
+          required:
+          - template
           type: object
         status:
           description: ClusterSetStatus defines the observed state of ClusterSet

@@ -24,3 +24,6 @@ spec:
         - "--metrics-addr=127.0.0.1:8080"
         - "--enable-leader-election"
         - "--sync-period=20s"
+        env:
+        - name: AWS_DEFAULT_REGION
+          value: "us-east-2"
