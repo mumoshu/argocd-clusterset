@@ -23,3 +23,13 @@ $ kustomize build config/default | kubectl apply -f - --dry-run
 
 $ kustomize build config/default | kubectl apply -f -
 ```
+
+Or to use it as a command-line tool, run:
+
+```shell script
+$ make build
+
+$ ./argocd-clusterset sync \
+  --namespace ns-for-cluster-secrets \
+  --eks-tags environment=production --eks-tags owner=yourteam
+```
