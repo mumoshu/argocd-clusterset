@@ -24,6 +24,7 @@ func main() {
 		endpoint string
 		caData   string
 		eksTags  []string
+		labelKVs []string
 	)
 
 	cmd := &cobra.Command{
@@ -38,20 +39,46 @@ func main() {
 	flag.StringVar(&endpoint, "endpoint", "", "")
 	flag.StringVar(&caData, "ca-data", "", "")
 	flag.StringSliceVar(&eksTags, "eks-tags", nil, "Comma-separated KEY=VALUE pairs of EKS control-plane tags")
+	flag.StringSliceVar(&labelKVs, "labels", nil, "Comma-separated KEY=VALUE pairs of cluster secret labels")
 
-	cmd.MarkPersistentFlagRequired("name")
+	newLabels := func() map[string]string {
+		labels := map[string]string{}
+
+		return labels
+	}
+
+	newConfig := func() run.Config {
+		return run.Config{
+			DryRun:   dryRun,
+			NS:       ns,
+			Name:     name,
+			Endpoint: endpoint,
+			CAData:   caData,
+			Labels:   newLabels(),
+		}
+	}
+
+	newSetConfig := func() run.ClusterSetConfig {
+		tags := map[string]string{}
+		for _, kv := range eksTags {
+			split := strings.Split(kv, "=")
+			tags[split[0]] = split[1]
+		}
+
+		setConfig := run.ClusterSetConfig{
+			DryRun:  dryRun,
+			NS:      ns,
+			EKSTags: tags,
+			Labels:  newLabels(),
+		}
+
+		return setConfig
+	}
 
 	create := &cobra.Command{
 		Use: "create",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config := run.Config{
-				DryRun:   dryRun,
-				NS:       ns,
-				Name:     name,
-				Endpoint: endpoint,
-				CAData:   caData,
-			}
-			return run.Create(config)
+			return run.Create(newConfig())
 		},
 	}
 	cmd.AddCommand(create)
@@ -59,14 +86,7 @@ func main() {
 	delete := &cobra.Command{
 		Use: "delete",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			config := run.Config{
-				DryRun:   dryRun,
-				NS:       ns,
-				Name:     name,
-				Endpoint: endpoint,
-				CAData:   caData,
-			}
-			return run.Delete(config)
+			return run.Delete(newConfig())
 		},
 	}
 	cmd.AddCommand(delete)
@@ -74,18 +94,7 @@ func main() {
 	createMissing := &cobra.Command{
 		Use: "create-missing",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tags := map[string]string{}
-			for _, kv := range eksTags {
-				split := strings.Split(kv, "=")
-				tags[split[0]] = split[1]
-			}
-
-			setConfig := run.ClusterSetConfig{
-				DryRun:  dryRun,
-				NS:      ns,
-				EKSTags: tags,
-			}
-			return run.CreateMissing(setConfig)
+			return run.CreateMissing(newSetConfig())
 		},
 	}
 	cmd.AddCommand(createMissing)
@@ -93,18 +102,7 @@ func main() {
 	deleteMissing := &cobra.Command{
 		Use: "delete-missing",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tags := map[string]string{}
-			for _, kv := range eksTags {
-				split := strings.Split(kv, "=")
-				tags[split[0]] = split[1]
-			}
-
-			setConfig := run.ClusterSetConfig{
-				DryRun:  dryRun,
-				NS:      ns,
-				EKSTags: tags,
-			}
-			return run.DeleteMissing(setConfig)
+			return run.DeleteMissing(newSetConfig())
 		},
 	}
 	cmd.AddCommand(deleteMissing)
@@ -112,18 +110,7 @@ func main() {
 	sync := &cobra.Command{
 		Use: "sync",
 		RunE: func(cmd *cobra.Command, args []string) error {
-			tags := map[string]string{}
-			for _, kv := range eksTags {
-				split := strings.Split(kv, "=")
-				tags[split[0]] = split[1]
-			}
-
-			setConfig := run.ClusterSetConfig{
-				DryRun:  dryRun,
-				NS:      ns,
-				EKSTags: tags,
-			}
-			return run.Sync(setConfig)
+			return run.Sync(newSetConfig())
 		},
 	}
 	cmd.AddCommand(sync)

@@ -44,6 +44,9 @@ fmt:
 vet:
 	go vet ./...
 
+build: generate
+	go build .
+
 docker-buildx: buildx
 	export DOCKER_CLI_EXPERIMENTAL=enabled
 	@if ! docker buildx ls | grep -q container-builder; then\

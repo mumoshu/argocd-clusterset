@@ -17,6 +17,7 @@ import (
 	"os"
 	"path/filepath"
 	"sigs.k8s.io/yaml"
+	"strings"
 )
 
 type Config struct {
@@ -25,12 +26,14 @@ type Config struct {
 	Name     string
 	Endpoint string
 	CAData   string
+	Labels   map[string]string
 }
 
 type ClusterSetConfig struct {
 	DryRun  bool
 	NS      string
 	EKSTags map[string]string
+	Labels  map[string]string
 }
 
 func Create(config Config) error {
@@ -39,6 +42,7 @@ func Create(config Config) error {
 	endpoint := config.Endpoint
 	caData := config.CAData
 	dryRun := config.DryRun
+	labels := config.Labels
 
 	clientset := newClientset()
 
@@ -49,13 +53,13 @@ func Create(config Config) error {
 	if endpoint == "" || caData == "" {
 		var err error
 
-		object, err = newClusterSecretFromName(ns, name)
+		object, err = newClusterSecretFromName(ns, name, labels)
 
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		object = newClusterSecretFromValues(ns, name, endpoint, caData)
+		object = newClusterSecretFromValues(ns, name, labels, endpoint, caData)
 	}
 
 	if dryRun {
@@ -88,7 +92,7 @@ func CreateMissing(config ClusterSetConfig) error {
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
-	objects, err := clusterSecretsFromClusters(ns, config.EKSTags)
+	objects, err := clusterSecretsFromClusters(ns, config.EKSTags, config.Labels)
 	if err != nil {
 		return err
 	}
@@ -144,14 +148,22 @@ func DeleteMissing(config ClusterSetConfig) error {
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
+	labelSelectors := []string{
+		fmt.Sprintf("%s=%s", SecretLabelKeyArgoCDType, SecretLabelValueArgoCDCluster),
+	}
+
+	for k, v := range config.Labels {
+		labelSelectors = append(labelSelectors, fmt.Sprintf("%s=%s", k, v))
+	}
+
 	result, err := kubeclient.List(context.TODO(), metav1.ListOptions{
-		LabelSelector: fmt.Sprintf("%s=%s", SecretLabelKeyArgoCDType, SecretLabelValueArgoCDCluster),
+		LabelSelector: strings.Join(labelSelectors, ","),
 	})
 	if err != nil {
 		return xerrors.Errorf("listing cluster secrets: %w", err)
 	}
 
-	objects, err := clusterSecretsFromClusters(ns, config.EKSTags)
+	objects, err := clusterSecretsFromClusters(ns, config.EKSTags, config.Labels)
 	if err != nil {
 		return err
 	}
@@ -195,16 +207,16 @@ func Sync(config ClusterSetConfig) error {
 	return nil
 }
 
-func clusterSecretsFromClusters(ns string, tags map[string]string) ([]*corev1.Secret, error) {
+func clusterSecretsFromClusters(ns string, tags, labels map[string]string) ([]*corev1.Secret, error) {
 	sess := awsclicompat.NewSession("", "")
 
 	eksClient := eks.New(sess)
 
 	var secrets []*corev1.Secret
 
-	var nextToken *string
+	process := func(nextToken *string) (*string, error) {
+		log.Printf("Calling EKS ListClusters...")
 
-	for nextToken = nil; nextToken != nil; {
 		result, err := eksClient.ListClusters(&eks.ListClustersInput{
 			NextToken: nextToken,
 		})
@@ -213,7 +225,11 @@ func clusterSecretsFromClusters(ns string, tags map[string]string) ([]*corev1.Se
 			return nil, xerrors.Errorf("listing clusters: %w", err)
 		}
 
+		log.Printf("Found %d clusters.", len(result.Clusters))
+
 		for _, clusterName := range result.Clusters {
+			log.Printf("Checking cluster %s...", *clusterName)
+
 			result, err := eksClient.DescribeCluster(&eks.DescribeClusterInput{Name: aws.String(*clusterName)})
 			if err != nil {
 				return nil, xerrors.Errorf("creating cluster secret: %w", err)
@@ -227,7 +243,7 @@ func clusterSecretsFromClusters(ns string, tags map[string]string) ([]*corev1.Se
 			}
 
 			if all {
-				sec := newClusterSecretFromCluster(ns, *clusterName, result)
+				sec := newClusterSecretFromCluster(ns, *clusterName, labels, result)
 
 				secrets = append(secrets, sec)
 			} else {
@@ -235,13 +251,30 @@ func clusterSecretsFromClusters(ns string, tags map[string]string) ([]*corev1.Se
 			}
 		}
 
-		nextToken = result.NextToken
+		return result.NextToken, nil
+	}
+
+	log.Printf("Computing desired cluster secrets from EKS clusters...")
+
+	nextToken, err := process(nil)
+	if err != nil {
+		return nil, xerrors.Errorf("processing first set of EKS clusters: %w", err)
+	}
+
+	for nextToken = nil; nextToken != nil; {
+		var err error
+
+		nextToken, err = process(nextToken)
+
+		if err != nil {
+			return nil, err
+		}
 	}
 
 	return secrets, nil
 }
 
-func newClusterSecretFromName(ns, name string) (*corev1.Secret, error) {
+func newClusterSecretFromName(ns, name string, labels map[string]string) (*corev1.Secret, error) {
 	sess := awsclicompat.NewSession("", "")
 
 	eksClient := eks.New(sess)
@@ -251,11 +284,11 @@ func newClusterSecretFromName(ns, name string) (*corev1.Secret, error) {
 		return nil, err
 	}
 
-	return newClusterSecretFromCluster(ns, name, result), nil
+	return newClusterSecretFromCluster(ns, name, labels, result), nil
 }
 
-func newClusterSecretFromCluster(ns, name string, result *eks.DescribeClusterOutput) *corev1.Secret {
-	return newClusterSecretFromValues(ns, name, *result.Cluster.Endpoint, *result.Cluster.CertificateAuthority.Data)
+func newClusterSecretFromCluster(ns, name string, labels map[string]string, result *eks.DescribeClusterOutput) *corev1.Secret {
+	return newClusterSecretFromValues(ns, name, labels, *result.Cluster.Endpoint, *result.Cluster.CertificateAuthority.Data)
 }
 
 const (
@@ -263,7 +296,15 @@ const (
 	SecretLabelValueArgoCDCluster = "cluster"
 )
 
-func newClusterSecretFromValues(ns, name, server, base64CA string) *corev1.Secret {
+func newClusterSecretFromValues(ns, name string, labels map[string]string, server, base64CA string) *corev1.Secret {
+	lbls := map[string]string{
+		SecretLabelKeyArgoCDType: SecretLabelValueArgoCDCluster,
+	}
+
+	for k, v := range labels {
+		lbls[k] = v
+	}
+
 	// Create resource object
 	object := &corev1.Secret{
 		TypeMeta: metav1.TypeMeta{
@@ -273,9 +314,7 @@ func newClusterSecretFromValues(ns, name, server, base64CA string) *corev1.Secre
 		ObjectMeta: metav1.ObjectMeta{
 			Name:      name,
 			Namespace: ns,
-			Labels: map[string]string{
-				SecretLabelKeyArgoCDType: SecretLabelValueArgoCDCluster,
-			},
+			Labels:    lbls,
 		},
 		StringData: map[string]string{
 			"name":   name,
