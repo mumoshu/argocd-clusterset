@@ -27,6 +27,7 @@ type ClusterSetSpec struct {
 }
 
 type ClusterSelector struct {
+	RoleARN string            `json:"roleARN,omitempty"`
 	EKSTags map[string]string `json:"eksTags,omitempty"`
 }
 
@@ -36,6 +37,15 @@ type ClusterSecretTemplate struct {
 
 type ClusterSecretTemplateMetadata struct {
 	Labels map[string]string `json:"labels"`
+	Config ClusterSecretTemplateMetadataConfig `json:"config,omitempty"`
+}
+
+type ClusterSecretTemplateMetadataConfig struct {
+	AWSAuthConfig ClusterSecretTemplateMetadataConfigAwsAuthConfig `json:"awsAuthConfig,omitempty"`
+}
+
+type ClusterSecretTemplateMetadataConfigAwsAuthConfig struct {
+	RoleARN string `json:"roleARN,omitempty"`
 }
 
 // ClusterSetStatus defines the observed state of ClusterSet

@@ -20,11 +20,13 @@ func main() {
 	var (
 		dryRun   bool
 		ns       string
+		roleARN  string
 		name     string
 		endpoint string
 		caData   string
 		eksTags  []string
 		labelKVs []string
+		awsAuthConfigRoleARN string
 	)
 
 	cmd := &cobra.Command{
@@ -35,11 +37,13 @@ func main() {
 
 	flag.BoolVar(&dryRun, "dry-run", false, "")
 	flag.StringVar(&ns, "namespace", "", "")
+	flag.StringVar(&roleARN, "role-arn", "", "")
 	flag.StringVar(&name, "name", "", "")
 	flag.StringVar(&endpoint, "endpoint", "", "")
 	flag.StringVar(&caData, "ca-data", "", "")
 	flag.StringSliceVar(&eksTags, "eks-tags", nil, "Comma-separated KEY=VALUE pairs of EKS control-plane tags")
 	flag.StringSliceVar(&labelKVs, "labels", nil, "Comma-separated KEY=VALUE pairs of cluster secret labels")
+	flag.StringVar(&awsAuthConfigRoleARN, "aws-auth-config-role-arn", "", "")
 
 	newLabels := func() map[string]string {
 		labels := map[string]string{}
@@ -51,10 +55,12 @@ func main() {
 		return run.Config{
 			DryRun:   dryRun,
 			NS:       ns,
+			RoleARN: roleARN,
 			Name:     name,
 			Endpoint: endpoint,
 			CAData:   caData,
 			Labels:   newLabels(),
+			AwsAuthConfigRoleARN: awsAuthConfigRoleARN,
 		}
 	}
 
@@ -66,10 +72,12 @@ func main() {
 		}
 
 		setConfig := run.ClusterSetConfig{
-			DryRun:  dryRun,
-			NS:      ns,
-			EKSTags: tags,
-			Labels:  newLabels(),
+			DryRun:               dryRun,
+			NS:                   ns,
+			RoleARN:              roleARN,
+			EKSTags:              tags,
+			Labels:               newLabels(),
+			AWSAuthConfigRoleARN: awsAuthConfigRoleARN,
 		}
 
 		return setConfig

@@ -4,6 +4,7 @@ import (
 	"github.com/aws/aws-sdk-go/aws"
 	"github.com/aws/aws-sdk-go/aws/credentials/stscreds"
 	"github.com/aws/aws-sdk-go/aws/session"
+	"github.com/aws/aws-sdk-go/service/sts"
 	"os"
 )
 
@@ -18,7 +19,7 @@ import (
 //
 // The fourth option of using FORCE_AWS_PROFILE=true and AWS_PROFILE=yourprofile is equivalent to `aws --profile ${AWS_PROFILE}`.
 // See https://github.com/variantdev/vals/issues/19#issuecomment-600437486 for more details and why and when this is needed.
-func NewSession(region, profile string) *session.Session {
+func NewSession(region, profile, roleARN string) *session.Session {
 	var cfg *aws.Config
 	if region != "" {
 		cfg = aws.NewConfig().WithRegion(region)
@@ -38,6 +39,11 @@ func NewSession(region, profile string) *session.Session {
 	}
 
 	sess := session.Must(session.NewSessionWithOptions(opts))
+
+	if roleARN != "" {
+		creds := stscreds.NewCredentialsWithClient(sts.New(sess), roleARN)
+		return sess.Copy(&aws.Config{Credentials: creds})
+	}
 
 	return sess
 }
