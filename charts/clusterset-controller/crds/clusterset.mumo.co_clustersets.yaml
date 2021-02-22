@@ -23,7 +23,7 @@ spec:
     status: {}
   validation:
     openAPIV3Schema:
-      description: ClusterSet is the Schema for the runners API
+      description: ClusterSet is the Schema for the ClusterSet API
       properties:
         apiVersion:
           description: 'APIVersion defines the versioned schema of this representation
@@ -46,11 +46,21 @@ spec:
                   additionalProperties:
                     type: string
                   type: object
+                roleARN:
+                  type: string
               type: object
             template:
               properties:
                 metadata:
                   properties:
+                    config:
+                      properties:
+                        awsAuthConfig:
+                          properties:
+                            roleARN:
+                              type: string
+                          type: object
+                      type: object
                     labels:
                       additionalProperties:
                         type: string

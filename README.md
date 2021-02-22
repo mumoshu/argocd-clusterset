@@ -39,12 +39,16 @@ metadata:
   name: myclusterset1
 spec:
   selector:
+    roleARN: "arn:aws:iam::123456789012:role/read-eks-cluster-role" # optional
     eksTags:
       foo: "bar"
   template:
     metadata:
       labels:
         env: "prod"
+      config:
+        awsAuthConfig:
+          roleARN: "arn:aws:iam::123456789012:role/argocd-auth-role" # optional
 EOF
 ```
 

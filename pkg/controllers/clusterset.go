@@ -99,10 +99,12 @@ func (r *ClusterSetReconciler) Reconcile(req ctrl.Request) (ctrl.Result, error) 
 	}
 
 	config := run.ClusterSetConfig{
-		DryRun:  false,
-		NS:      req.Namespace,
-		EKSTags: clusterSet.Spec.Selector.EKSTags,
-		Labels:  clusterSet.Spec.Template.Metadata.Labels,
+		DryRun:               false,
+		NS:                   req.Namespace,
+		RoleARN:              clusterSet.Spec.Selector.RoleARN,
+		EKSTags:              clusterSet.Spec.Selector.EKSTags,
+		Labels:               clusterSet.Spec.Template.Metadata.Labels,
+		AWSAuthConfigRoleARN: clusterSet.Spec.Template.Metadata.Config.AWSAuthConfig.RoleARN,
 	}
 
 	if err := run.Sync(config); err != nil {

@@ -24,26 +24,32 @@ import (
 type Config struct {
 	DryRun   bool
 	NS       string
+	RoleARN  string
 	Name     string
 	Endpoint string
 	CAData   string
 	Labels   map[string]string
+	AwsAuthConfigRoleARN string
 }
 
 type ClusterSetConfig struct {
-	DryRun  bool
-	NS      string
-	EKSTags map[string]string
-	Labels  map[string]string
+	DryRun               bool
+	NS                   string
+	RoleARN              string
+	EKSTags              map[string]string
+	Labels               map[string]string
+	AWSAuthConfigRoleARN string
 }
 
 func Create(config Config) error {
 	ns := config.NS
+	roleARN := config.RoleARN
 	name := config.Name
 	endpoint := config.Endpoint
 	caData := config.CAData
 	dryRun := config.DryRun
 	labels := config.Labels
+	awsAuthConfigRoleARN := config.AwsAuthConfigRoleARN
 
 	clientset, err := newClientset()
 	if err != nil {
@@ -57,13 +63,13 @@ func Create(config Config) error {
 	if endpoint == "" || caData == "" {
 		var err error
 
-		object, err = newClusterSecretFromName(ns, name, labels)
+		object, err = newClusterSecretFromName(ns, roleARN, name, labels, awsAuthConfigRoleARN)
 
 		if err != nil {
 			panic(err)
 		}
 	} else {
-		object = newClusterSecretFromValues(ns, name, labels, endpoint, caData)
+		object = newClusterSecretFromValues(ns, name, labels, endpoint, caData, awsAuthConfigRoleARN)
 	}
 
 	if dryRun {
@@ -99,7 +105,7 @@ func CreateMissing(config ClusterSetConfig) error {
 
 	kubeclient := clientset.CoreV1().Secrets(ns)
 
-	objects, err := clusterSecretsFromClusters(ns, config.EKSTags, config.Labels)
+	objects, err := clusterSecretsFromClusters(ns, config.RoleARN, config.EKSTags, config.Labels, config.AWSAuthConfigRoleARN)
 	if err != nil {
 		return err
 	}
@@ -180,7 +186,7 @@ func DeleteMissing(config ClusterSetConfig) error {
 		return xerrors.Errorf("listing cluster secrets: %w", err)
 	}
 
-	objects, err := clusterSecretsFromClusters(ns, config.EKSTags, config.Labels)
+	objects, err := clusterSecretsFromClusters(ns, config.RoleARN, config.EKSTags, config.Labels, config.AWSAuthConfigRoleARN)
 	if err != nil {
 		return err
 	}
@@ -224,8 +230,8 @@ func Sync(config ClusterSetConfig) error {
 	return nil
 }
 
-func clusterSecretsFromClusters(ns string, tags, labels map[string]string) ([]*corev1.Secret, error) {
-	sess := awsclicompat.NewSession("", "")
+func clusterSecretsFromClusters(ns, roleARN string, tags, labels map[string]string, awsAuthConfigRoleARN string) ([]*corev1.Secret, error) {
+	sess := awsclicompat.NewSession("", "", roleARN)
 
 	eksClient := eks.New(sess)
 
@@ -260,7 +266,7 @@ func clusterSecretsFromClusters(ns string, tags, labels map[string]string) ([]*c
 			}
 
 			if all {
-				sec := newClusterSecretFromCluster(ns, *clusterName, labels, result)
+				sec := newClusterSecretFromCluster(ns, *clusterName, labels, result, awsAuthConfigRoleARN)
 
 				secrets = append(secrets, sec)
 			} else {
@@ -291,8 +297,8 @@ func clusterSecretsFromClusters(ns string, tags, labels map[string]string) ([]*c
 	return secrets, nil
 }
 
-func newClusterSecretFromName(ns, name string, labels map[string]string) (*corev1.Secret, error) {
-	sess := awsclicompat.NewSession("", "")
+func newClusterSecretFromName(ns, roleARN, name string, labels map[string]string, awsAuthConfigRoleARN string) (*corev1.Secret, error) {
+	sess := awsclicompat.NewSession("", "", roleARN)
 
 	eksClient := eks.New(sess)
 
@@ -301,11 +307,11 @@ func newClusterSecretFromName(ns, name string, labels map[string]string) (*corev
 		return nil, err
 	}
 
-	return newClusterSecretFromCluster(ns, name, labels, result), nil
+	return newClusterSecretFromCluster(ns, name, labels, result, awsAuthConfigRoleARN), nil
 }
 
-func newClusterSecretFromCluster(ns, name string, labels map[string]string, result *eks.DescribeClusterOutput) *corev1.Secret {
-	return newClusterSecretFromValues(ns, name, labels, *result.Cluster.Endpoint, *result.Cluster.CertificateAuthority.Data)
+func newClusterSecretFromCluster(ns, name string, labels map[string]string, result *eks.DescribeClusterOutput, awsAuthConfigRoleARN string) *corev1.Secret {
+	return newClusterSecretFromValues(ns, name, labels, *result.Cluster.Endpoint, *result.Cluster.CertificateAuthority.Data, awsAuthConfigRoleARN)
 }
 
 const (
@@ -313,7 +319,7 @@ const (
 	SecretLabelValueArgoCDCluster = "cluster"
 )
 
-func newClusterSecretFromValues(ns, name string, labels map[string]string, server, base64CA string) *corev1.Secret {
+func newClusterSecretFromValues(ns, name string, labels map[string]string, server, base64CA, awsAuthConfigRoleARN string) *corev1.Secret {
 	lbls := map[string]string{
 		SecretLabelKeyArgoCDType: SecretLabelValueArgoCDCluster,
 	}
@@ -338,14 +344,15 @@ func newClusterSecretFromValues(ns, name string, labels map[string]string, serve
 			"server": server,
 			"config": fmt.Sprintf(`{
       "awsAuthConfig": {
-        "clusterName": "%s"
+        "clusterName": "%s",
+        "roleARN": "%s"
       },
       "tlsClientConfig": {
         "insecure": false,
         "caData": "%s"
       }
     }
-`, name, base64CA),
+`, name, awsAuthConfigRoleARN, base64CA),
 		},
 	}
 
